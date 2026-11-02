@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Knack den KeePass Tresor · Live</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<style>
+:root {
+  /* Layout: Host Ansicht für den Beamer (gross, zentriert), Spieler Ansicht fürs Handy (Vollbild Kacheln). Party Quiz Look mit dicken Konturen. */
+  --bg: #1d2145;
+  --bg2: #151834;
+  --panel: #2b3066;
+  --edge: #0c0e22;
+  --ink: #ffffff;
+  --soft: #b9bfe8;
+  --gold: #ffc533;
+  --red: #e8414f;
+  --blue: #2f7cf6;
+  --yellow: #f0a91a;
+  --green: #22b35e;
+  --display: "Lilita One", "Arial Black", Impact, sans-serif;
+  --body: "Nunito", "Segoe UI", system-ui, sans-serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { min-height: 100%; margin: 0; }
+body {
+  background-color: var(--bg);
+  background-image: radial-gradient(rgba(255,255,255,.07) 1.5px, transparent 1.6px), radial-gradient(circle at 50% 0%, #2c3275 0%, transparent 70%);
+  background-size: 26px 26px, 100% 100%;
+  background-attachment: fixed;
+  color: var(--ink); font-family: var(--body); font-weight: 800; font-size: 18px; line-height: 1.35;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+body.ok { background-color: #16804a; background-image: none; }
+body.no { background-color: #a92f3b; background-image: none; }
+button { font: inherit; color: inherit; cursor: pointer; border: 0; }
+button:focus-visible, input:focus-visible { outline: 4px solid var(--gold); outline-offset: 3px; }
+.app { max-width: 1180px; margin: 0 auto; padding: 16px; display: flex; flex-direction: column; gap: 16px; min-height: 100vh; }
+
+/* Grundbausteine */
+.panel { background: var(--panel); border: 3px solid var(--edge); border-radius: 22px; box-shadow: 0 8px 0 var(--edge); padding: clamp(16px, 3vw, 30px); display: flex; flex-direction: column; gap: 16px; }
+.btn { font-family: var(--display); font-weight: 400; font-size: 22px; background: #fff; color: #191c3a; border: 3px solid var(--edge); border-radius: 14px; box-shadow: 0 6px 0 var(--edge); padding: 12px 26px; transition: transform .08s; }
+.btn:hover:not(:disabled) { transform: translateY(-2px); }
+.btn:active:not(:disabled) { transform: translateY(4px); box-shadow: 0 2px 0 var(--edge); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn.gold { background: var(--gold); }
+.btn.green { background: var(--green); color: #fff; text-shadow: 0 2px 0 rgba(0,0,0,.25); }
+.btn.dark { background: var(--edge); color: #fff; box-shadow: 0 6px 0 #000; }
+.btn.small { font-size: 16px; padding: 8px 14px; }
+.row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.center { text-align: center; justify-content: center; align-items: center; }
+.hint { color: var(--soft); font-size: 15px; margin: 0; }
+.tag { align-self: flex-start; font-family: var(--display); font-size: 15px; letter-spacing: .06em; background: var(--edge); color: var(--soft); padding: 4px 12px; border-radius: 99px; }
+.tag.boss { background: var(--red); color: #fff; }
+.err { color: #fff; background: var(--red); border: 3px solid var(--edge); border-radius: 12px; padding: 8px 12px; font-size: 16px; }
+
+.logo { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.logo .sub { font-family: var(--display); color: var(--gold); letter-spacing: .12em; font-size: 15px; }
+.logo h1 { margin: 0; font-family: var(--display); font-weight: 400; font-size: clamp(40px, 8vw, 84px); line-height: .95; text-shadow: 0 5px 0 var(--edge); -webkit-text-stroke: 2px var(--edge); paint-order: stroke fill; text-wrap: balance; }
+.logo h1 span { color: var(--gold); }
+.logo .by { color: var(--soft); font-size: 14px; }
+
+.card { align-self: center; width: min(100%, 440px); background: #fff; color: #191c3a; border: 3px solid var(--edge); border-radius: 18px; box-shadow: 0 6px 0 var(--edge); padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.card input { font-family: var(--display); font-size: 26px; text-align: center; color: #191c3a; background: #eef0fb; border: 3px solid #c9cdea; border-radius: 12px; padding: 10px; width: 100%; }
+.card input::placeholder { color: #9aa0cc; }
+.card .btn { width: 100%; }
+.card .btn.dark { color: #fff; }
+
+/* Host: Lobby */
+.lobbytop { display: grid; grid-template-columns: 1fr auto; gap: 18px; align-items: center; }
+@media (max-width: 760px) { .lobbytop { grid-template-columns: 1fr; } }
+.joinbox { background: #fff; color: #191c3a; border: 3px solid var(--edge); border-radius: 18px; box-shadow: 0 6px 0 var(--edge); padding: 14px 20px; display: flex; flex-direction: column; gap: 4px; }
+.joinbox .l { font-size: 18px; color: #4a4f7a; }
+.joinbox .url { font-family: var(--display); font-size: clamp(18px, 2.4vw, 28px); word-break: break-all; }
+.joinbox .pinl { font-size: 18px; color: #4a4f7a; margin-top: 6px; }
+.joinbox .pin { font-family: var(--display); font-size: clamp(56px, 9vw, 104px); letter-spacing: .08em; line-height: 1; }
+.qr { background: #fff; border: 3px solid var(--edge); border-radius: 18px; box-shadow: 0 6px 0 var(--edge); padding: 10px; width: 220px; height: 220px; display: grid; place-items: center; }
+.qr img, .qr svg { width: 100%; height: 100%; image-rendering: pixelated; }
+.players { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; min-height: 64px; align-content: flex-start; }
+.pchip { font-family: var(--display); font-size: 22px; background: #fff; color: #191c3a; border: 3px solid var(--edge); border-radius: 12px; box-shadow: 0 5px 0 var(--edge); padding: 6px 14px; animation: pop .35s; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pchip.off { opacity: .4; }
+.pcount { font-family: var(--display); font-size: 22px; display: flex; align-items: center; gap: 10px; }
+.pcount b { color: var(--gold); font-size: 40px; }
+@keyframes pop { 0% { transform: scale(.4); } 70% { transform: scale(1.12); } 100% { transform: none; } }
+
+/* Host: Status Leiste */
+.hostbar { display: grid; grid-template-columns: auto 1fr auto; gap: 14px; align-items: center; }
+@media (max-width: 760px) { .hostbar { grid-template-columns: 1fr 1fr; } .hostbar .bot { grid-column: 1 / -1; } }
+.pill { background: var(--panel); border: 3px solid var(--edge); border-radius: 16px; box-shadow: 0 5px 0 var(--edge); padding: 8px 14px; display: flex; align-items: center; gap: 10px; }
+.pill .lbl { font-size: 12px; color: var(--soft); text-transform: uppercase; letter-spacing: .08em; }
+.pill .big { font-family: var(--display); font-size: 26px; color: var(--gold); }
+.bot { gap: 12px; }
+.bot.hit svg { animation: botshake .4s; }
+@keyframes botshake { 20% { transform: rotate(-12deg) scale(1.1); } 50% { transform: rotate(10deg) scale(1.1); } 80% { transform: rotate(-4deg); } }
+.botinfo { flex: 1; display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.botrow { display: flex; justify-content: space-between; align-items: baseline; }
+.botrow b { font-family: var(--display); font-weight: 400; font-size: 18px; }
+.botrow span { font-family: var(--display); font-size: 20px; color: var(--red); }
+.hp { height: 18px; background: var(--bg2); border: 3px solid var(--edge); border-radius: 99px; overflow: hidden; }
+.hp i { display: block; height: 100%; width: 0%; background: linear-gradient(#ff6b77, var(--red)); transition: width .6s cubic-bezier(.3,1.4,.6,1); }
+.code { display: flex; gap: 6px; }
+.digit { width: 38px; height: 46px; border-radius: 10px; background: var(--bg2); border: 3px solid var(--edge); display: grid; place-items: center; font-family: var(--display); font-size: 26px; color: #4a5190; }
+.digit.open { background: var(--gold); color: var(--edge); animation: pop .5s; }
+
+/* Frage */
+.qbox { background: #fff; color: #191c3a; border: 3px solid var(--edge); border-radius: 16px; box-shadow: 0 5px 0 var(--edge); padding: 20px; text-align: center; font-family: var(--display); font-weight: 400; font-size: clamp(24px, 3.6vw, 42px); line-height: 1.15; text-wrap: balance; }
+.qmid { display: grid; grid-template-columns: auto 1fr auto; gap: 16px; align-items: center; }
+.clock { width: 96px; height: 96px; border-radius: 50%; background: var(--edge); display: grid; place-items: center; font-family: var(--display); font-size: 42px; border: 5px solid var(--gold); font-variant-numeric: tabular-nums; }
+.clock.low { border-color: var(--red); color: var(--red); }
+.answered { text-align: center; font-family: var(--display); }
+.answered b { display: block; font-size: 48px; line-height: 1; }
+.answered span { color: var(--soft); font-size: 16px; }
+.qart { display: grid; place-items: center; color: var(--soft); font-size: 15px; text-align: center; }
+
+.tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.tile { position: relative; min-height: 90px; border-radius: 14px; border: 3px solid var(--edge); box-shadow: 0 6px 0 var(--edge), inset 0 -6px 0 rgba(0,0,0,.18); padding: 14px 16px 18px; display: flex; gap: 14px; align-items: center; text-align: left; font-size: clamp(18px, 2.2vw, 26px); color: #fff; text-shadow: 0 2px 0 rgba(0,0,0,.25); transition: transform .08s, opacity .25s, filter .25s; }
+.tile .shape { flex: none; width: 38px; height: 38px; }
+.tile .cnt { margin-left: auto; font-family: var(--display); font-size: 28px; }
+.c0 { background: var(--red); } .c1 { background: var(--blue); } .c2 { background: var(--yellow); } .c3 { background: var(--green); }
+.tile.dim { opacity: .25; filter: grayscale(.8); }
+.tile.win { outline: 5px solid #fff; outline-offset: -2px; }
+.mark { margin-left: 8px; width: 34px; height: 34px; border-radius: 50%; background: #fff; display: grid; place-items: center; flex: none; }
+
+.bars { display: grid; grid-template-columns: repeat(var(--n), 1fr); gap: 16px; align-items: end; height: 170px; padding: 0 10%; }
+.barc { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 6px; height: 100%; }
+.barc .v { font-family: var(--display); font-size: 28px; }
+.barc .b { width: 100%; border: 3px solid var(--edge); border-radius: 10px 10px 0 0; min-height: 10px; transition: height .6s cubic-bezier(.3,1.3,.6,1); display: grid; place-items: start center; padding-top: 6px; }
+.barc .b svg { width: 26px; height: 26px; }
+.barc.dim { opacity: .35; }
+
+/* Rangliste */
+.sboard { display: flex; flex-direction: column; gap: 10px; width: min(100%, 760px); align-self: center; }
+.srow { display: grid; grid-template-columns: 2.4em 1fr auto; gap: 12px; align-items: center; background: #fff; color: #191c3a; border: 3px solid var(--edge); border-radius: 14px; box-shadow: 0 5px 0 var(--edge); padding: 10px 16px; animation: slidein .4s backwards; }
+.srow:nth-child(2) { animation-delay: .08s; } .srow:nth-child(3) { animation-delay: .16s; } .srow:nth-child(4) { animation-delay: .24s; } .srow:nth-child(5) { animation-delay: .32s; }
+@keyframes slidein { from { transform: translateX(-40px); opacity: 0; } }
+.srow .pl { font-family: var(--display); font-size: 28px; color: #6b70a8; }
+.srow .nm { font-family: var(--display); font-size: 28px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.srow .nm small { font-family: var(--body); font-size: 15px; color: #e8414f; margin-left: 8px; }
+.srow .sc { font-family: var(--display); font-size: 30px; font-variant-numeric: tabular-nums; }
+.srow.first { background: var(--gold); }
+
+.podium { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; align-items: end; width: min(100%, 720px); align-self: center; }
+.pod { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; }
+.pod .nm { font-family: var(--display); font-size: 28px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pod .sc { font-size: 17px; color: var(--soft); }
+.pod .blk { width: 100%; border: 3px solid var(--edge); border-radius: 12px 12px 0 0; display: grid; place-items: center; font-family: var(--display); font-size: 48px; color: var(--edge); box-shadow: inset 0 -8px 0 rgba(0,0,0,.15); }
+.pod.p1 .blk { height: 200px; background: var(--gold); } .pod.p2 .blk { height: 140px; background: #d6dbf5; } .pod.p3 .blk { height: 100px; background: #e59a5c; }
+.pod.reveal { animation: rise .7s cubic-bezier(.3,1.4,.6,1) backwards; }
+.pod.p3.reveal { animation-delay: .3s; } .pod.p2.reveal { animation-delay: 1.1s; } .pod.p1.reveal { animation-delay: 2s; }
+@keyframes rise { from { transform: translateY(120px); opacity: 0; } }
+
+.head { font-family: var(--display); font-size: clamp(36px, 6vw, 64px); text-align: center; line-height: 1; text-shadow: 0 4px 0 var(--edge); }
+.head.red { color: var(--red); }
+
+/* Spieler am Handy */
+.phone { max-width: 560px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; flex: 1; }
+.ptop { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.ptop .nm { font-family: var(--display); font-size: 20px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ptop .sc { font-family: var(--display); font-size: 20px; background: var(--edge); border-radius: 10px; padding: 4px 12px; color: var(--gold); }
+.ptiles { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; min-height: 60vh; }
+.ptiles.two { grid-template-columns: 1fr; }
+.ptile { border-radius: 16px; border: 3px solid var(--edge); box-shadow: 0 6px 0 var(--edge), inset 0 -8px 0 rgba(0,0,0,.18); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 12px; color: #fff; font-size: 16px; text-align: center; text-shadow: 0 2px 0 rgba(0,0,0,.25); }
+.ptile .shape { width: 56px; height: 56px; }
+.ptile:active { transform: translateY(4px); box-shadow: 0 2px 0 var(--edge); }
+.bigmsg { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; text-align: center; padding: 20px 0; }
+.bigmsg .t { font-family: var(--display); font-size: clamp(40px, 12vw, 64px); line-height: 1; text-shadow: 0 4px 0 var(--edge); }
+.bigmsg .s { font-size: 20px; }
+.bigmsg .pts { font-family: var(--display); font-size: 34px; background: var(--edge); border-radius: 14px; padding: 6px 18px; }
+.spinner { width: 54px; height: 54px; border-radius: 50%; border: 7px solid rgba(255,255,255,.2); border-top-color: #fff; animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.mechip { font-family: var(--display); font-size: 30px; background: var(--gold); color: var(--edge); border: 3px solid var(--edge); border-radius: 14px; box-shadow: 0 5px 0 var(--edge); padding: 8px 20px; }
+
+#fx { position: fixed; inset: 0; pointer-events: none; z-index: 25; }
+@media (prefers-reduced-motion: reduce) { *, *::before { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<canvas id="fx" aria-hidden="true"></canvas>
+<div class="app" id="app"></div>
+
+<script>
+/* =========================================================
+   Knack den KeePass Tresor · Live
+   Ein Spiel von Natchanon & Zaim, ICT26c
+   Host am Beamer, Spieler am Handy, Verbindung über PeerJS
+   ========================================================= */
+
+/* ===== Fragen aus der Präsentation ===== */
+/* Die erste Antwort ist immer die richtige. Sie wird beim Anzeigen gemischt. */
+const QUESTIONS = [
+  { cat: "Grundlagen", q: "Was ist KeePass?", a: ["Ein kostenloser Open Source Passwort Manager", "Ein Cloud Speicher von Microsoft", "Ein Antivirenprogramm", "Ein Browser"] },
+  { cat: "Grundlagen", q: "In welcher Datei liegen alle Passwörter?", a: [".kdbx", ".pptx", ".docx", ".zip"] },
+  { cat: "Grundlagen", q: "Wie viele Passwörter musst du dir mit KeePass merken?", a: ["Nur das Master Passwort", "Gar keins", "Eins pro Gerät", "Alle"] },
+  { cat: "Das Ziel", q: "Was ist das Problem ohne Cloud?", a: ["Die Datenbank liegt nur auf einem Gerät", "KeePass ist nicht verschlüsselt", "Man kann keine Einträge erstellen", "Das Master Passwort läuft ab"] },
+  { cat: "Wahr oder falsch", q: "Die Cloud kann deine Passwörter in der .kdbx Datei lesen.", a: ["Falsch", "Wahr"], tf: true },
+  { cat: "Schritt 1", q: "Was machst du als Allererstes?", a: ["Datenbank erstellen (Datei, Neu)", "Cloud Ordner auswählen", "Hochladen abwarten", "App auf dem Handy installieren"] },
+  { cat: "Schritt 1", q: "Was kommt nach: Cloud Ordner als Speicherort wählen?", a: ["Warten, bis synchronisiert ist", "Datenbank erstellen", "Master Passwort festlegen", "KeePass deinstallieren"] },
+  { cat: "Schritt 2", q: "Zweites Gerät: Was machst du nach der App Installation?", a: ["Mit demselben Cloud Konto anmelden", "Neue Datenbank erstellen", "Master Passwort ändern", "Datei per Mail senden"] },
+  { cat: "Apps", q: "Welche App nimmst du auf einem Android Handy?", a: ["KeePassDX", "KeePassium", "Strongbox", "KeePass 2"] },
+  { cat: "Apps", q: "Und auf dem iPhone?", a: ["KeePassium oder Strongbox", "KeePassDX", "KeePassXC", "Notizen App"] },
+  { cat: "Wahr oder falsch", q: "Zwei Geräte gleichzeitig bearbeiten ist kein Problem.", a: ["Falsch", "Wahr"], tf: true },
+  { cat: "Sicherheit", q: "Mit wie viel Bit ist die Datenbank verschlüsselt?", a: ["256 Bit", "8 Bit", "64 Bit", "Gar nicht"] },
+  { cat: "Wahr oder falsch", q: "Eine Backup Kopie offline hilft, falls die Cloud ausfällt.", a: ["Wahr", "Falsch"], tf: true },
+  { cat: "Endgegner", q: "BruteBot greift an! Welches Passwort ist am stärksten?", a: ["Tram-Regen-Fondue-42!", "P@ssw0rt", "Leo2026", "123456"], boss: true }
+];
+const CODE = ["2", "5", "6", "8"];
+const DIGIT_AT = { 3: 0, 7: 1, 11: 2, 13: 3 }; // nach Frage i wird Ziffer x sichtbar
+const LIMIT = 20, LIMIT_TF = 12;
+
+const SHAPES = [
+  '<svg class="shape" viewBox="0 0 32 32"><path d="M16 3 L30 28 H2 Z" fill="#fff"/></svg>',
+  '<svg class="shape" viewBox="0 0 32 32"><path d="M16 2 L30 16 L16 30 L2 16 Z" fill="#fff"/></svg>',
+  '<svg class="shape" viewBox="0 0 32 32"><circle cx="16" cy="16" r="13" fill="#fff"/></svg>',
+  '<svg class="shape" viewBox="0 0 32 32"><rect x="4" y="4" width="24" height="24" rx="3" fill="#fff"/></svg>'
+];
+const CHECK = '<span class="mark"><svg width="22" height="22" viewBox="0 0 20 20"><path d="M4 10.5 L8.5 15 L16 5.5" stroke="#22b35e" stroke-width="3.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>';
+const BOT_SVG = '<svg width="52" height="52" viewBox="0 0 52 52" aria-hidden="true"><line x1="26" y1="4" x2="26" y2="12" stroke="#0c0e22" stroke-width="3"/><circle cx="26" cy="5" r="4" fill="#e8414f" stroke="#0c0e22" stroke-width="2.5"/><rect x="6" y="12" width="40" height="32" rx="9" fill="#9aa3d9" stroke="#0c0e22" stroke-width="3"/><rect x="11" y="18" width="30" height="16" rx="5" fill="#0c0e22"/><circle cx="19" cy="26" r="4" fill="#e8414f"/><circle cx="33" cy="26" r="4" fill="#e8414f"/><rect x="17" y="37" width="18" height="3" rx="1.5" fill="#0c0e22"/></svg>';
+
+/* ===== Helfer ===== */
+const app = document.getElementById("app");
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+const cleanName = s => String(s || "").replace(/[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁠-⁤﻿]/g, "").trim().slice(0, 16);
+function shuffle(a) { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+function view(html) { app.innerHTML = html; }
+const params = new URLSearchParams(location.search);
+const PREFIX = "knack-tresor-ict26c-";
+/* Test Option: eigener PeerJS Server über ?peerhost=...&peerport=... */
+function peerOpts() {
+  const o = { debug: 0 };
+  if (params.get("peerhost")) { o.host = params.get("peerhost"); o.port = +params.get("peerport") || 9000; o.path = "/"; o.secure = params.get("peersecure") === "1"; }
+  return o;
+}
+function joinUrl() { return location.origin + location.pathname; }
+
+/* ===== Ton ===== */
+let ac = null, muted = false;
+function beep(f, d, type, vol, when) {
+  if (muted) return;
+  try {
+    ac = ac || new (window.AudioContext || window.webkitAudioContext)();
+    const t = ac.currentTime + (when || 0), o = ac.createOscillator(), g = ac.createGain();
+    o.type = type || "sine"; o.frequency.setValueAtTime(f, t);
+    g.gain.setValueAtTime(vol || .12, t); g.gain.exponentialRampToValueAtTime(.0001, t + d);
+    o.connect(g); g.connect(ac.destination); o.start(t); o.stop(t + d);
+  } catch (e) {}
+}
+const sfx = {
+  join() { beep(880, .08, "triangle", .08); beep(1320, .1, "triangle", .08, .07); },
+  tick() { beep(1200, .04, "square", .03); },
+  right() { beep(660, .12, "triangle"); beep(990, .2, "triangle", .12, .09); },
+  wrong() { beep(200, .12, "square", .07); beep(140, .3, "square", .07, .1); },
+  reveal() { [392, 523, 659].forEach((f, i) => beep(f, .18, "triangle", .1, i * .08)); },
+  digit() { [523, 659, 784, 1047].forEach((f, i) => beep(f, .2, "triangle", .1, i * .09)); },
+  win() { [523, 659, 784, 1047, 1319].forEach((f, i) => beep(f, .35, "triangle", .1, i * .12)); },
+  alarm() { beep(440, .2, "square", .07); beep(330, .2, "square", .07, .22); }
+};
+
+/* ===== Konfetti ===== */
+const cv = $("fx"), cx = cv.getContext("2d");
+let parts = [], raf = null;
+function confetti() {
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  cv.width = innerWidth; cv.height = innerHeight;
+  const cols = ["#ffc533", "#22b35e", "#2f7cf6", "#e8414f", "#ffffff"];
+  for (let i = 0; i < 220; i++) parts.push({ x: innerWidth / 2 + (Math.random() - .5) * 300, y: innerHeight / 3, vx: (Math.random() - .5) * 18, vy: Math.random() * -15 - 4, s: 6 + Math.random() * 9, c: cols[i % 5], r: Math.random() * 6, life: 180 });
+  if (!raf) loop();
+}
+function loop() {
+  cx.clearRect(0, 0, cv.width, cv.height);
+  parts.forEach(p => { p.vy += .32; p.x += p.vx; p.y += p.vy; p.r += .2; p.life--; cx.save(); cx.translate(p.x, p.y); cx.rotate(p.r); cx.fillStyle = p.c; cx.fillRect(-p.s / 2, -p.s / 4, p.s, p.s / 2); cx.restore(); });
+  parts = parts.filter(p => p.life > 0 && p.y < cv.height + 20);
+  raf = parts.length ? requestAnimationFrame(loop) : (cx.clearRect(0, 0, cv.width, cv.height), null);
+}
+
+/* =========================================================
+   START
+   ========================================================= */
+function home() {
+  document.body.className = "";
+  const pin = (params.get("pin") || "").replace(/\D/g, "").slice(0, 6);
+  let saved = ""; try { saved = localStorage.getItem("ktresor-name") || ""; } catch (e) {}
+  view(`
+    <div class="logo" style="margin-top:4vh">
+      <span class="sub">KEEPASS IN DIE CLOUD · ICT26C</span>
+      <h1>Knack den <span>Tresor</span></h1>
+      <span class="by">ein Live Quiz von Natchanon &amp; Zaim</span>
+    </div>
+    <form class="card" id="joinForm" autocomplete="off">
+      <input id="pin" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="Game PIN" value="${esc(pin)}" aria-label="Game PIN">
+      <input id="nick" maxlength="16" placeholder="Nickname" value="${esc(saved)}" aria-label="Nickname">
+      <button class="btn dark" type="submit">Beitreten</button>
+      <div id="joinErr" class="err" hidden></div>
+    </form>
+    <div class="row center"><button class="btn small" id="hostBtn">Spiel hosten (Beamer)</button></div>`);
+  $(pin ? "nick" : "pin").focus();
+  $("joinForm").onsubmit = e => {
+    e.preventDefault();
+    const p = $("pin").value.replace(/\D/g, ""), n = cleanName($("nick").value);
+    const er = $("joinErr");
+    if (p.length !== 6) { er.hidden = false; er.textContent = "Der Game PIN hat 6 Ziffern."; return; }
+    if (!n) { er.hidden = false; er.textContent = "Gib einen Nickname ein."; return; }
+    try { localStorage.setItem("ktresor-name", n); } catch (e) {}
+    playerJoin(p, n);
+  };
+  $("hostBtn").onclick = hostCreate;
+}
+
+/* =========================================================
+   HOST
+   ========================================================= */
+const H = { peer: null, pin: "", players: new Map(), qi: -1, q: null, order: [], answers: new Map(), qStart: 0, timer: null, hack: 0, phase: "lobby", digits: [] };
+
+function hostCreate() {
+  if (typeof Peer === "undefined") { view(`<div class="panel"><div class="err">PeerJS konnte nicht geladen werden. Prüf die Internetverbindung und lade neu.</div></div>`); return; }
+  view(`<div class="panel center" style="min-height:50vh"><div class="spinner"></div><p class="hint">Raum wird erstellt …</p></div>`);
+  const pin = String(Math.floor(100000 + Math.random() * 900000));
+  const peer = new Peer(PREFIX + pin, peerOpts());
+  peer.on("open", () => { H.peer = peer; H.pin = pin; hostLobby(); });
+  peer.on("error", err => {
+    if (err.type === "unavailable-id") { peer.destroy(); hostCreate(); return; }
+    if (H.peer) return; // Fehler einzelner Verbindungen ignorieren
+    view(`<div class="panel"><div class="err">Raum konnte nicht erstellt werden (${esc(err.type || "Fehler")}). Prüf die Internetverbindung und versuch es nochmal.</div><button class="btn" onclick="location.reload()">Neu laden</button></div>`);
+  });
+  peer.on("disconnected", () => { try { peer.reconnect(); } catch (e) {} });
+  peer.on("connection", conn => hostConn(conn));
+}
+
+function hostConn(conn) {
+  conn.on("data", d => hostData(conn, d));
+  conn.on("close", () => {
+    for (const p of H.players.values()) if (p.conn === conn) { p.online = false; }
+    if (H.phase === "lobby") hostRenderPlayers();
+    hostUpdateCount();
+  });
+}
+function send(conn, msg) { try { if (conn && conn.open) conn.send(msg); } catch (e) {} }
+function broadcast(msg) { for (const p of H.players.values()) if (p.online) send(p.conn, msg); }
+
+function hostData(conn, d) {
+  if (!d || typeof d !== "object") return;
+  if (d.t === "join") {
+    const name = cleanName(d.name);
+    if (!name) return send(conn, { t: "reject", why: "Ungültiger Nickname." });
+    const key = name.toLowerCase();
+    const ex = H.players.get(key);
+    if (ex && ex.online && ex.conn !== conn) return send(conn, { t: "reject", why: "Den Nickname gibt es schon. Nimm einen anderen." });
+    if (!ex && H.players.size >= 60) return send(conn, { t: "reject", why: "Der Raum ist voll." });
+    const p = ex || { name, score: 0, streak: 0, last: 0, correct: 0 };
+    p.conn = conn; p.online = true;
+    H.players.set(key, p);
+    send(conn, { t: "welcome", name: p.name, score: p.score });
+    if (!ex) sfx.join();
+    if (H.phase === "lobby") hostRenderPlayers();
+    else if (H.phase === "question") send(conn, hostQMsg());
+    else if (H.phase === "end") send(conn, hostEndMsg(p));
+    else send(conn, { t: "wait", score: p.score });
+    hostUpdateCount();
+    return;
+  }
+  if (d.t === "ans") {
+    if (H.phase !== "question" || d.i !== H.qi) return;
+    const p = [...H.players.values()].find(x => x.conn === conn);
+    if (!p || H.answers.has(p.name.toLowerCase())) return;
+    const k = Number(d.k);
+    if (!Number.isInteger(k) || k < 0 || k >= H.order.length) return;
+    H.answers.set(p.name.toLowerCase(), { k, ms: Date.now() - H.qStart });
+    send(conn, { t: "got" });
+    hostUpdateCount();
+    const online = [...H.players.values()].filter(x => x.online).length;
+    if (H.answers.size >= online) hostReveal();
+  }
+}
+
+function hostUpdateCount() {
+  const online = [...H.players.values()].filter(x => x.online).length;
+  const pc = $("pcount"); if (pc) pc.innerHTML = `<b>${online}</b> ${online === 1 ? "Spieler" : "Spieler"}`;
+  const ac = $("ansCount"); if (ac) ac.textContent = H.answers.size;
+  const sb = $("startBtn"); if (sb) sb.disabled = online < 1;
+}
+
+function hostLobby() {
+  H.phase = "lobby";
+  const url = joinUrl();
+  view(`
+    <div class="lobbytop">
+      <div class="joinbox">
+        <span class="l">Geh auf</span>
+        <span class="url">${esc(url.replace(/^https?:\/\//, ""))}</span>
+        <span class="pinl">Game PIN:</span>
+        <span class="pin">${H.pin.slice(0, 3)} ${H.pin.slice(3)}</span>
+      </div>
+      <div class="qr" id="qr" aria-label="QR Code zum Beitreten"></div>
+    </div>
+    <div class="panel">
+      <div class="row" style="justify-content:space-between">
+        <div class="pcount" id="pcount"></div>
+        <div class="row">
+          <button class="btn small" id="muteBtn">${muted ? "Ton aus" : "Ton an"}</button>
+          <button class="btn green" id="startBtn" disabled>Start</button>
+        </div>
+      </div>
+      <div class="players" id="plist"><p class="hint">Warte auf Spieler …</p></div>
+    </div>
+    <p class="hint" style="text-align:center">Knack den KeePass Tresor · ${QUESTIONS.length} Fragen · BruteBot greift die ganze Klasse an</p>`);
+  try {
+    const qr = qrcode(0, "M"); qr.addData(url + "?pin=" + H.pin); qr.make();
+    $("qr").innerHTML = qr.createSvgTag({ cellSize: 6, margin: 1, scalable: true });
+  } catch (e) { $("qr").innerHTML = `<p class="hint" style="color:#191c3a">PIN eingeben</p>`; }
+  $("startBtn").onclick = hostStart;
+  $("muteBtn").onclick = () => { muted = !muted; $("muteBtn").textContent = muted ? "Ton aus" : "Ton an"; };
+  hostRenderPlayers(); hostUpdateCount();
+}
+function hostRenderPlayers() {
+  const el = $("plist"); if (!el) return;
+  const ps = [...H.players.values()];
+  el.innerHTML = ps.length ? ps.map(p => `<span class="pchip ${p.online ? "" : "off"}">${esc(p.name)}</span>`).join("") : `<p class="hint">Warte auf Spieler …</p>`;
+}
+
+function hostBar() {
+  return `<div class="hostbar">
+    <div class="pill"><span class="lbl">PIN</span><span class="big">${H.pin}</span></div>
+    <div class="pill bot" id="bot">${BOT_SVG}<div class="botinfo"><div class="botrow"><b>BruteBot gegen die Klasse</b><span id="hackPct">${Math.floor(H.hack)}%</span></div><div class="hp"><i id="hackBar" style="width:${Math.min(100, H.hack)}%"></i></div></div></div>
+    <div class="pill"><span class="lbl">Code</span><div class="code">${CODE.map((c, i) => `<div class="digit ${H.digits.includes(i) ? "open" : ""}">${H.digits.includes(i) ? c : "?"}</div>`).join("")}</div></div>
+  </div>`;
+}
+
+function hostStart() {
+  H.qi = -1; H.hack = 0; H.digits = [];
+  for (const p of H.players.values()) { p.score = 0; p.streak = 0; p.correct = 0; p.last = 0; }
+  hostNext();
+}
+function hostQMsg() {
+  const q = QUESTIONS[H.qi];
+  return { t: "q", i: H.qi, n: QUESTIONS.length, q: q.q, opts: H.order.map(o => o.t), tf: !!q.tf, boss: !!q.boss, limit: q.tf ? LIMIT_TF : LIMIT, left: Math.max(0, (q.tf ? LIMIT_TF : LIMIT) - (Date.now() - H.qStart) / 1000) };
+}
+function hostNext() {
+  H.qi++;
+  if (H.qi >= QUESTIONS.length) return hostFinal();
+  const q = QUESTIONS[H.qi];
+  H.order = q.tf ? q.a.map((t, k) => ({ t, right: k === 0 })).sort((a, b) => (a.t === "Wahr" ? -1 : 1)) : shuffle(q.a.map((t, k) => ({ t, right: k === 0 })));
+  H.answers = new Map();
+  H.phase = "intro";
+  broadcast({ t: "get", i: H.qi, n: QUESTIONS.length, boss: !!q.boss });
+  view(`${hostBar()}
+    <div class="panel center" style="min-height:52vh">
+      <span class="tag ${q.boss ? "boss" : ""}" style="align-self:center">Frage ${H.qi + 1} von ${QUESTIONS.length} · ${esc(q.cat)}${q.boss ? " · doppelte Punkte" : ""}</span>
+      <div class="qbox" style="width:100%">${esc(q.q)}</div>
+      <div class="spinner"></div>
+    </div>`);
+  if (q.boss) sfx.alarm();
+  setTimeout(hostQuestion, 3000);
+}
+function hostQuestion() {
+  const q = QUESTIONS[H.qi], limit = q.tf ? LIMIT_TF : LIMIT;
+  H.phase = "question"; H.qStart = Date.now();
+  broadcast(hostQMsg());
+  const shapeIdx = q.tf ? [3, 0] : [0, 1, 2, 3];
+  view(`${hostBar()}
+    <div class="panel">
+      <div class="qbox">${esc(q.q)}</div>
+      <div class="qmid">
+        <div class="clock" id="clock">${limit}</div>
+        <div class="qart">${q.boss ? BOT_SVG.replace('width="52" height="52"', 'width="120" height="120"') : `<span>${esc(q.cat)}</span>`}</div>
+        <div class="answered"><b id="ansCount">0</b><span>Antworten</span></div>
+      </div>
+      <div class="tiles">${H.order.map((o, k) => `<div class="tile c${shapeIdx[k]}">${SHAPES[shapeIdx[k]]}<span>${esc(o.t)}</span></div>`).join("")}</div>
+      <div class="row" style="justify-content:flex-end"><button class="btn small" id="skipBtn">Auflösen</button></div>
+    </div>`);
+  $("skipBtn").onclick = hostReveal;
+  hostUpdateCount();
+  clearInterval(H.timer);
+  H.timer = setInterval(() => {
+    const left = Math.max(0, limit - (Date.now() - H.qStart) / 1000);
+    const c = $("clock"); if (!c) return;
+    const s = Math.ceil(left);
+    if (c.textContent !== String(s)) { c.textContent = s; if (s <= 5 && s > 0) sfx.tick(); }
+    c.classList.toggle("low", left <= 5);
+    if (left <= 0) hostReveal();
+  }, 100);
+}
+function hostReveal() {
+  if (H.phase !== "question") return;
+  H.phase = "reveal"; clearInterval(H.timer);
+  const q = QUESTIONS[H.qi], limit = (q.tf ? LIMIT_TF : LIMIT) * 1000;
+  const rightK = H.order.findIndex(o => o.right);
+  const counts = H.order.map(() => 0);
+  let right = 0, total = 0;
+  for (const p of H.players.values()) {
+    const a = H.answers.get(p.name.toLowerCase());
+    p.last = 0;
+    if (!p.online && !a) continue;
+    total++;
+    if (a) counts[a.k]++;
+    if (a && a.k === rightK) {
+      right++; p.streak++; p.correct++;
+      let pts = Math.round(1000 * (1 - Math.min(1, a.ms / limit) / 2));
+      if (p.streak >= 2) pts += Math.min(5, p.streak - 1) * 100;
+      if (q.boss) pts *= 2;
+      p.score += pts; p.last = pts;
+    } else p.streak = 0;
+  }
+  const wrongShare = total ? 1 - right / total : 1;
+  const before = H.hack;
+  H.hack = Math.min(100, H.hack + Math.round(wrongShare * (q.boss ? 40 : 15)));
+  if (H.digits.length < 4 && DIGIT_AT[H.qi] !== undefined && right / Math.max(1, total) >= .5) H.digits.push(DIGIT_AT[H.qi]);
+  const ranked = hostRanked();
+  for (const p of H.players.values()) {
+    const a = H.answers.get(p.name.toLowerCase());
+    send(p.conn, { t: "res", ok: !!a && a.k === rightK, answered: !!a, pts: p.last, score: p.score, streak: p.streak, rank: ranked.indexOf(p) + 1, of: ranked.length, right: H.order[rightK].t });
+  }
+  const shapeIdx = q.tf ? [3, 0] : [0, 1, 2, 3];
+  const max = Math.max(1, ...counts);
+  sfx.reveal();
+  view(`${hostBar()}
+    <div class="panel">
+      <div class="qbox">${esc(q.q)}</div>
+      <div class="bars" style="--n:${H.order.length}">${H.order.map((o, k) => `<div class="barc ${k === rightK ? "" : "dim"}"><span class="v">${counts[k]}</span><div class="b c${shapeIdx[k]}" style="height:${44 + counts[k] / max * 100}px">${k === rightK ? CHECK : SHAPES[shapeIdx[k]]}</div></div>`).join("")}</div>
+      <div class="tiles">${H.order.map((o, k) => `<div class="tile c${shapeIdx[k]} ${k === rightK ? "win" : "dim"}">${SHAPES[shapeIdx[k]]}<span>${esc(o.t)}</span>${k === rightK ? CHECK : ""}</div>`).join("")}</div>
+      <div class="row" style="justify-content:space-between">
+        <p class="hint" style="font-size:18px">${right} von ${total} richtig${H.hack > before ? ` · BruteBot +${H.hack - before}%` : " · BruteBot kommt nicht weiter"}</p>
+        <button class="btn gold" id="nextBtn">Weiter</button>
+      </div>
+    </div>`);
+  if (H.hack > before) { const b = $("bot"); if (b) b.classList.add("hit"); }
+  if (H.digits.length && H.digits[H.digits.length - 1] === DIGIT_AT[H.qi]) sfx.digit();
+  $("nextBtn").onclick = () => (H.qi >= QUESTIONS.length - 1 ? hostFinal() : hostScoreboard());
+  $("nextBtn").focus();
+}
+function hostRanked() { return [...H.players.values()].sort((a, b) => b.score - a.score); }
+function hostScoreboard() {
+  H.phase = "board";
+  const top = hostRanked().slice(0, 5);
+  broadcast({ t: "wait" });
+  view(`${hostBar()}
+    <div class="head">Rangliste</div>
+    <div class="sboard">${top.map((p, i) => `<div class="srow ${i === 0 ? "first" : ""}"><span class="pl">${i + 1}</span><span class="nm">${esc(p.name)}${p.streak >= 3 ? `<small>Streak ${p.streak}</small>` : ""}</span><span class="sc">${p.score}</span></div>`).join("")}</div>
+    <div class="row center"><button class="btn gold" id="nextBtn">Nächste Frage</button></div>`);
+  $("nextBtn").onclick = hostNext; $("nextBtn").focus();
+}
+function hostEndMsg(p) {
+  const ranked = hostRanked();
+  return { t: "end", rank: ranked.indexOf(p) + 1, of: ranked.length, score: p.score, correct: p.correct, n: QUESTIONS.length, safe: H.hack < 100 };
+}
+function hostFinal() {
+  H.phase = "end"; clearInterval(H.timer);
+  const ranked = hostRanked(), top = ranked.slice(0, 3);
+  for (const p of H.players.values()) send(p.conn, hostEndMsg(p));
+  const safe = H.hack < 100;
+  view(`${hostBar()}
+    <div class="head ${safe ? "" : "red"}">${safe ? "Tresor gerettet! Code 2568" : "BruteBot hat den Tresor geknackt"}</div>
+    <div class="podium" style="margin-top:20px">${[1, 0, 2].map(i => top[i] ? `<div class="pod p${i + 1} reveal"><span class="nm">${esc(top[i].name)}</span><span class="sc">${top[i].score} Punkte</span><div class="blk">${i + 1}</div></div>` : `<div class="pod p${i + 1}"><span class="nm" style="color:#4a5190">frei</span><span class="sc">&nbsp;</span><div class="blk" style="opacity:.3">${i + 1}</div></div>`).join("")}</div>
+    <div class="row center"><button class="btn" id="againBtn">Nochmal spielen</button></div>`);
+  setTimeout(() => { sfx.win(); confetti(); }, 2100);
+  $("againBtn").onclick = () => { broadcast({ t: "lobby" }); for (const p of H.players.values()) { p.score = 0; p.streak = 0; } H.hack = 0; H.digits = []; hostLobby(); };
+}
+
+/* =========================================================
+   SPIELER
+   ========================================================= */
+const P = { peer: null, conn: null, name: "", pin: "", score: 0, qi: -1, answered: false, retry: 0 };
+
+function playerJoin(pin, name) {
+  if (typeof Peer === "undefined") { const er = $("joinErr"); er.hidden = false; er.textContent = "Verbindung nicht möglich. Prüf das Internet und lade neu."; return; }
+  P.pin = pin; P.name = name;
+  view(`<div class="phone"><div class="bigmsg"><div class="spinner"></div><div class="s">Verbinde mit Raum ${esc(pin)} …</div></div></div>`);
+  if (P.peer) { try { P.peer.destroy(); } catch (e) {} }
+  const peer = new Peer(peerOpts());
+  P.peer = peer;
+  peer.on("open", () => {
+    const conn = peer.connect(PREFIX + pin, { reliable: true });
+    P.conn = conn;
+    const t = setTimeout(() => { if (!conn.open) playerFail("Keine Antwort vom Raum. Stimmt der PIN?"); }, 12000);
+    conn.on("open", () => { clearTimeout(t); P.retry = 0; send(conn, { t: "join", name }); });
+    conn.on("data", playerData);
+    conn.on("close", () => playerLost());
+  });
+  peer.on("error", err => {
+    if (err.type === "peer-unavailable") playerFail("Diesen Game PIN gibt es nicht. Schau nochmal auf den Beamer.");
+    else if (!P.conn || !P.conn.open) playerFail("Verbindung fehlgeschlagen (" + (err.type || "Fehler") + ").");
+  });
+}
+function playerLost() {
+  if (P.retry >= 3) return playerFail("Verbindung zum Raum verloren.");
+  P.retry++;
+  view(`<div class="phone"><div class="bigmsg"><div class="spinner"></div><div class="s">Verbindung weg, versuche es nochmal …</div></div></div>`);
+  setTimeout(() => playerJoin(P.pin, P.name), 1500);
+}
+function playerFail(msg) {
+  document.body.className = "";
+  view(`<div class="phone"><div class="bigmsg"><div class="t">Hoppla</div><div class="s">${esc(msg)}</div><button class="btn" id="back">Zurück</button></div></div>`);
+  $("back").onclick = () => { try { P.peer && P.peer.destroy(); } catch (e) {} P.retry = 99; home(); };
+}
+function ptop() { return `<div class="ptop"><span class="nm">${esc(P.name)}</span><span class="sc">${P.score}</span></div>`; }
+function playerWait(title, sub) {
+  document.body.className = "";
+  view(`<div class="phone">${ptop()}<div class="bigmsg"><div class="t">${title}</div><div class="s">${sub}</div><div class="spinner"></div></div></div>`);
+}
+function playerData(d) {
+  if (!d || typeof d !== "object") return;
+  if (d.t === "reject") { P.retry = 99; try { P.conn.close(); } catch (e) {} return playerFail(d.why || "Beitreten nicht möglich."); }
+  if (d.t === "welcome") {
+    P.name = cleanName(d.name) || P.name; P.score = Number(d.score) || 0;
+    document.body.className = "";
+    view(`<div class="phone"><div class="bigmsg"><div class="t">Du bist drin!</div><div class="mechip">${esc(P.name)}</div><div class="s">Siehst du deinen Namen am Beamer?</div><div class="spinner"></div></div></div>`);
+    return;
+  }
+  if (d.t === "lobby") { P.score = 0; return playerWait("Neue Runde", "Gleich gehts wieder los."); }
+  if (d.t === "wait") { if (typeof d.score === "number") P.score = d.score; return playerWait("Schau zum Beamer", "Gleich kommt die nächste Frage."); }
+  if (d.t === "get") return playerWait(d.boss ? "Endgegner!" : "Frage " + (d.i + 1), d.boss ? "Doppelte Punkte. Mach dich bereit." : "Mach dich bereit …");
+  if (d.t === "q") {
+    P.qi = d.i; P.answered = false; document.body.className = "";
+    const opts = Array.isArray(d.opts) ? d.opts.slice(0, 4) : [];
+    const shapeIdx = d.tf ? [3, 0] : [0, 1, 2, 3];
+    view(`<div class="phone">${ptop()}
+      <div class="ptiles ${opts.length === 2 ? "two" : ""}">${opts.map((t, k) => `<button class="ptile c${shapeIdx[k]}" data-k="${k}">${SHAPES[shapeIdx[k]]}<span>${esc(String(t))}</span></button>`).join("")}</div></div>`);
+    app.querySelectorAll(".ptile").forEach(b => b.onclick = () => {
+      if (P.answered) return;
+      P.answered = true;
+      send(P.conn, { t: "ans", i: P.qi, k: +b.dataset.k });
+      playerWait("Antwort gesendet", "Mal sehen, ob du schneller warst …");
+    });
+    return;
+  }
+  if (d.t === "got") return;
+  if (d.t === "res") {
+    P.score = Number(d.score) || 0;
+    document.body.className = d.ok ? "ok" : "no";
+    if (d.ok) sfx.right(); else sfx.wrong();
+    view(`<div class="phone">${ptop()}<div class="bigmsg">
+      <div class="t">${d.ok ? "Richtig!" : d.answered ? "Falsch!" : "Zu langsam!"}</div>
+      ${d.ok ? `<div class="pts">+${d.pts}</div>` : `<div class="s">Richtig war: ${esc(String(d.right || ""))}</div>`}
+      ${d.ok && d.streak >= 2 ? `<div class="s">Streak ${d.streak}</div>` : ""}
+      <div class="s">Du bist auf Platz ${d.rank} von ${d.of}</div></div></div>`);
+    return;
+  }
+  if (d.t === "end") {
+    P.score = Number(d.score) || 0;
+    document.body.className = "";
+    const place = d.rank === 1 ? "1. Platz!" : d.rank === 2 ? "2. Platz!" : d.rank === 3 ? "3. Platz!" : "Platz " + d.rank;
+    if (d.rank <= 3) { sfx.win(); confetti(); }
+    view(`<div class="phone">${ptop()}<div class="bigmsg">
+      <div class="t">${place}</div>
+      <div class="pts">${d.score} Punkte</div>
+      <div class="s">${d.correct} von ${d.n} richtig · ${d.of} Spieler</div>
+      <div class="s">${d.safe ? "Die Klasse hat den Tresor gerettet." : "BruteBot hat den Klassen Tresor geknackt."}</div></div></div>`);
+  }
+}
+
+home();
+</script>
+</body>
+</html>
